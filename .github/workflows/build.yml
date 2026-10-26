@@ -21,7 +21,7 @@ jobs:
         run: npm install
 
       - name: .deb Paketini Oluştur
-        run: npx electron-builder --linux deb
+        run: npx electron-builder --linux deb --publish never
 
       - name: Paketi Kaydet (Artifacts)
         uses: actions/upload-artifact@v4
