@@ -1,0 +1,50 @@
+{
+  "name": "zahir-kalem",
+  "version": "1.0.0",
+  "description": "ZahirKalem Ekran Çizim ve Sunum Aracı",
+  "homepage": "https://github.com/zahir/zahirkalem",
+  "author": {
+    "name": "Zahir",
+    "email": "zahir@example.com"
+  },
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:portable": "electron-builder --win portable",
+    "build:deb": "electron-builder --linux deb"
+  },
+  "build": {
+    "appId": "com.zahir.kalem",
+    "productName": "ZahirKalem",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "linux": {
+      "target": ["deb"],
+      "category": "Education",
+      "maintainer": "Zahir <zahir@example.com>"
+    },
+    "deb": {
+      "desktop": {
+        "Name": "ZahirKalem",
+        "Comment": "Ekran Çizim ve Sunum Aracı",
+        "Categories": "Education;Utility;"
+      }
+    },
+    "portable": {
+      "artifactName": "ZahirKalem-Portable-${version}.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.0"
+  }
+}

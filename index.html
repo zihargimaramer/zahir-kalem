@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>ZahirKalem</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body, html { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: transparent; }
+        
+        html.board-active, body.board-active { overflow-y: auto !important; height: auto !important; min-height: 100vh; }
+
+        #whiteboardBg {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: transparent; z-index: 5; transition: background 0.3s; pointer-events: none;
+        }
+        html.board-active #whiteboardBg { background: #ffffff; pointer-events: auto; }
+
+        html.board-active.bg-lined #whiteboardBg {
+            background-image: linear-gradient(to bottom, #ffffff 29px, #e2e8f0 30px);
+            background-size: 100% 30px;
+        }
+        html.board-active.bg-grid #whiteboardBg {
+            background-image: linear-gradient(to right, #f1f5f9 1px, transparent 1px), linear-gradient(to bottom, #f1f5f9 1px, transparent 1px);
+            background-size: 25px 25px;
+            background-color: #ffffff;
+        }
+        html.board-active.bg-dot #whiteboardBg {
+            background-image: radial-gradient(#cbd5e1 1.5px, #ffffff 1.5px);
+            background-size: 25px 25px;
+            background-color: #ffffff;
+        }
+
+        #drawingCanvas {
+            position: absolute; top: 0; left: 0;
+            width: 100vw; height: 3000px;
+            z-index: 10; cursor: crosshair;
+        }
+
+        .cutout-panel {
+            position: fixed;
+            background: #ffffff;
+            z-index: 8;
+            pointer-events: auto;
+        }
+        .cutout-close {
+            position: fixed;
+            z-index: 14;
+            width: 26px;
+            height: 26px;
+            background: rgba(239, 68, 68, 0.95);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .cutout-close:hover { background: rgb(220, 38, 38); }
+
+        #regionPreview {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px dashed #3b82f6;
+            z-index: 15;
+            display: none;
+            pointer-events: none;
+            border-radius: 4px;
+        }
+
+        #spotlightOverlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.88); z-index: 15; pointer-events: none;
+            display: none; clip-path: circle(120px at 50% 50%);
+            transition: background 0.2s;
+        }
+        body.spotlight-active #spotlightOverlay { display: block; }
+
+        #stopwatchWidget {
+            position: fixed; top: 100px; right: 30px;
+            background: rgba(20, 20, 25, 0.95); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 12px;
+            padding: 12px 18px; color: #fff; font-size: 20px; font-weight: bold;
+            z-index: 1000; display: none; cursor: grab; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            pointer-events: auto;
+        }
+
+        #inlineTextInput {
+            position: fixed; display: none; z-index: 2500;
+            background: rgba(20, 20, 25, 0.9); border: 2px solid #3b82f6;
+            color: #fff; padding: 6px 12px; font-size: 20px; border-radius: 8px;
+            outline: none; box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+        }
+
+        #penPopupMenu, #shapePopupMenu, #boardPopupMenu, #spotlightPopupMenu, #settingsModal {
+            position: fixed;
+            background: rgba(22, 22, 28, 0.96); backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 14px;
+            padding: 14px; z-index: 2000; display: none; color: #fff;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+        }
+        #penPopupMenu, #shapePopupMenu, #boardPopupMenu, #spotlightPopupMenu { width: 160px; padding: 10px; }
+        #settingsModal { width: 260px; }
+
+        .popup-item {
+            padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; text-align: center; margin-bottom: 4px;
+            background: rgba(255,255,255,0.06); transition: background 0.2s;
+        }
+        .popup-item:hover { background: rgba(59, 130, 246, 0.3); }
+        .popup-item.active { background: #3b82f6; }
+
+        .section-title { font-size: 11px; color: #888; margin-bottom: 6px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+        .color-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
+        .color-circle {
+            width: 34px; height: 34px; border-radius: 50%; cursor: pointer; border: 2px solid rgba(255,255,255,0.2);
+            transition: transform 0.2s;
+        }
+        .color-circle:hover { transform: scale(1.1); }
+        .color-circle.selected { border-color: #fff; transform: scale(1.15); box-shadow: 0 0 10px rgba(59, 130, 246, 0.8); }
+        
+        .size-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; margin-bottom: 8px; }
+        .size-row input { width: 100px; cursor: pointer; accent-color: #3b82f6; }
+
+        #eyedropperBtn {
+            width: 100%; background: rgba(59, 130, 246, 0.2); border: 1px solid #3b82f6; color: #fff;
+            padding: 8px; border-radius: 8px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 10px;
+        }
+        #eyedropperBtn:hover { background: rgba(59, 130, 246, 0.4); }
+
+        #toolbar {
+            position: fixed; top: 30px; left: 30px;
+            background: rgba(20, 20, 25, 0.92); backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 16px;
+            padding: 8px; display: flex; flex-direction: row; gap: 6px;
+            z-index: 1000; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5); cursor: grab;
+        }
+        #toolbar.vertical { flex-direction: column; }
+
+        .tool-btn {
+            width: 44px; height: 44px; border-radius: 12px; border: none;
+            background: transparent; color: #e2e8f0;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: background 0.2s, transform 0.1s;
+        }
+        .tool-btn svg { width: 22px; height: 22px; fill: currentColor; }
+        .tool-btn:hover { background: rgba(255, 255, 255, 0.12); transform: translateY(-1px); color: #fff; }
+        .tool-btn.active { background: #3b82f6; color: #fff; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); }
+
+        #extendedTools { display: none; gap: 6px; align-items: center; }
+        #toolbar.expanded #extendedTools { display: flex; flex-direction: inherit; }
+
+        .separator { width: 1px; background: rgba(255, 255, 255, 0.15); margin: 6px 2px; }
+        #toolbar.vertical .separator { width: 100%; height: 1px; margin: 2px 6px; }
+    </style>
+</head>
+<body>
+
+    <div id="whiteboardBg"></div>
+    <div id="spotlightOverlay"></div>
+    <div id="regionPreview"></div>
+    <canvas id="drawingCanvas"></canvas>
+
+    <div id="stopwatchWidget">00:00</div>
+    <input type="text" id="inlineTextInput" placeholder="Yazı yazıp Enter'a basın...">
+
+    <!-- Kalem Menüsü (Kalınlık ve Türler burada) -->
+    <div id="penPopupMenu">
+        <div class="section-title">Kalem Türü</div>
+        <div class="popup-item active" data-type="fine">İnce Kalem</div>
+        <div class="popup-item" data-type="medium">Tükenmez</div>
+        <div class="popup-item" data-type="brush">Fırça Kalem</div>
+        <div class="popup-item" data-type="highlighter">Fosforlu Kalem</div>
+        <div class="section-title" style="margin-top:8px;">Kalınlık</div>
+        <div class="size-row">
+            <input type="range" id="penSizeRange" min="2" max="30" value="4" style="width:100%;">
+        </div>
+    </div>
+
+    <!-- Şekil Menüsü -->
+    <div id="shapePopupMenu">
+        <div class="popup-item active" data-shape="line">Çizgi</div>
+        <div class="popup-item" data-shape="rect">Kare / Dikdörtgen</div>
+        <div class="popup-item" data-shape="triangle">Üçgen</div>
+    </div>
+
+    <!-- Beyaz Tahta & Defter Modu Menüsü -->
+    <div id="boardPopupMenu">
+        <div class="popup-item" id="btnCloseBoard" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); margin-bottom: 8px;">Tahtayı Kapat</div>
+        <div class="section-title">Beyaz Tahta Modu</div>
+        <div class="popup-item board-mode-btn active" data-pattern="plain">Düz Beyaz Tahta</div>
+        <div class="popup-item board-mode-btn" data-pattern="bg-lined">Çizgili Defter</div>
+        <div class="popup-item board-mode-btn" data-pattern="bg-grid">Kareli Defter</div>
+        <div class="popup-item board-mode-btn" data-pattern="bg-dot">Noktalı Defter</div>
+    </div>
+
+    <!-- Spot Işığı Menüsü -->
+    <div id="spotlightPopupMenu">
+        <div class="section-title">Işık Boyutu</div>
+        <div class="size-row">
+            <input type="range" id="spotSizeRange" min="50" max="300" value="120" style="width:100%;">
+        </div>
+        <div class="section-title" style="margin-top:8px;">Arka Plan Rengi</div>
+        <div class="color-grid" style="margin-top: 4px;">
+            <div class="color-circle selected spot-color" style="background: rgba(0,0,0,0.88);" data-color="rgba(0,0,0,0.88)" title="Koyu Siyah"></div>
+            <div class="color-circle spot-color" style="background: rgba(15,23,42,0.92);" data-color="rgba(15,23,42,0.92)" title="Koyu Lacivert"></div>
+            <div class="color-circle spot-color" style="background: rgba(240,244,248,0.92);" data-color="rgba(240,244,248,0.92)" title="Açık Beyaz/Gri"></div>
+            <div class="color-circle spot-color" style="background: rgba(254,243,199,0.92);" data-color="rgba(254,243,199,0.92)" title="Açık Krem/Sarı"></div>
+        </div>
+    </div>
+
+    <!-- Genel Renk ve Silgi Ayarları -->
+    <div id="settingsModal">
+        <div class="section-title">Renk Paleti</div>
+        <div class="color-grid">
+            <div class="color-circle selected" style="background: #ef4444;" data-color="#ef4444"></div>
+            <div class="color-circle" style="background: #f97316;" data-color="#f97316"></div>
+            <div class="color-circle" style="background: #eab308;" data-color="#eab308"></div>
+            <div class="color-circle" style="background: #10b981;" data-color="#10b981"></div>
+            <div class="color-circle" style="background: #3b82f6;" data-color="#3b82f6"></div>
+            <div class="color-circle" style="background: #8b5cf6;" data-color="#8b5cf6"></div>
+            <div class="color-circle" style="background: #ffffff;" data-color="#ffffff"></div>
+            <div class="color-circle" style="background: #000000;" data-color="#000000"></div>
+        </div>
+
+        <button id="eyedropperBtn">
+            <svg style="width:16px;height:16px;fill:currentColor;" viewBox="0 0 24 24"><path d="M17.66 11.2C17.43 10.97 17.15 10.8 16.83 10.75L14.34 8.26C14.29 7.94 14.12 7.66 13.89 7.43C13.26 6.8 12.24 6.8 11.61 7.43L4.5 14.54C4.19 14.85 4 15.28 4 15.73V19.5C4 19.78 4.22 20 4.5 20H8.27C8.72 20 9.15 19.81 9.46 19.5L16.57 12.39C17.2 11.76 17.2 10.74 17.66 11.2M7.67 18.5H5.5V16.33L11.5 10.33L13.67 12.5L7.67 18.5Z"/></svg>
+            Ekrandan Renk Seç (Damlalık)
+        </button>
+
+        <div class="size-row">
+            <span>Silgi Boyutu:</span>
+            <input type="range" id="eraserSizeRange" min="10" max="100" value="40">
+        </div>
+    </div>
+
+    <div id="toolbar">
+        <button class="tool-btn active" id="btnPointer" title="İşaretçi (İmleç)">
+            <svg viewBox="0 0 24 24"><path d="M7 2l12 11.2-5.8.5 3.3 7.3-2.2 1-3.2-7.4L7 19V2z"/></svg>
+        </button>
+        <button class="tool-btn" id="btnPen" title="Kalem ve Kalınlık">
+            <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+        </button>
+        <button class="tool-btn" id="btnEraser" title="Silgi">
+            <svg viewBox="0 0 24 24"><path d="M15.14 3c-.51 0-1.02.2-1.41.59L2.59 14.73c-.78.78-.78 2.05 0 2.83L6.17 21.2c.39.39.9.59 1.41.59h9.59v-2H11.5l8.64-8.64c.78-.78.78-2.05 0-2.83l-3.59-3.59c-.39-.39-.9-.59-1.41-.59z"/></svg>
+        </button>
+        
+        <div class="separator"></div>
+        <button class="tool-btn" id="btnExpand" title="Daha Fazla Araç">
+            <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        </button>
+
+        <div id="extendedTools">
+            <button class="tool-btn" id="btnPalette" title="Renk Paleti ve Silgi Boyutu">
+                <svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9 0 2.12.74 4.07 1.97 5.61.43.53 1.03.89 1.7.89h1.83c.83 0 1.5-.67 1.5-1.5 0-.38-.15-.73-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9s1.5.67 1.5 1.5S7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+            </button>
+            <button class="tool-btn" id="btnShape" title="Şekil Çiz">
+                <svg viewBox="0 0 24 24"><path d="M3 3h18v18H3V3zm2 2v14h14V5H5z"/></svg>
+            </button>
+            <button class="tool-btn" id="btnText" title="Metin Ekle">
+                <svg viewBox="0 0 24 24"><path d="M5 4v3h5.5v12h3V7H19V4H5z"/></svg>
+            </button>
+            <button class="tool-btn" id="btnRegionBoard" title="Seçilen Bölge Harici Beyaz Tahta">
+                <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM7 7h4v4H7V7z"/></svg>
+            </button>
+            <button class="tool-btn" id="btnClearAll" title="Tümünü Temizle">
+                <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+            </button>
+            <div class="separator"></div>
+            <button class="tool-btn" id="btnUndo" title="Geri Al">
+                <svg viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
+            </button>
+            <button class="tool-btn" id="btnRedo" title="İleri Al">
+                <svg viewBox="0 0 24 24"><path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg>
+            </button>
+            <div class="separator"></div>
+            <button class="tool-btn" id="btnSpotlight" title="Spot Işığı">
+                <svg viewBox="0 0 24 24"><path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/></svg>
+            </button>
+            <button class="tool-btn" id="btnTimer" title="Kronometre">
+                <svg viewBox="0 0 24 24"><path d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42C16.07 4.74 14.12 4 12 4c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
+            </button>
+            <button class="tool-btn" id="btnBoard" title="Beyaz Tahta ve Defter Modları">
+                <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/></svg>
+            </button>
+            <div class="separator"></div>
+            <button class="tool-btn" id="btnSave" title="Ders Notunu Kaydet">
+                <svg viewBox="0 0 24 24"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
+            </button>
+            <button class="tool-btn" id="btnLayout" title="Yatay/Dikey">
+                <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+            </button>
+        </div>
+
+        <div class="separator"></div>
+        <button class="tool-btn" id="btnClose" title="Kapat" style="color: #ef4444;">
+            <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        const canvas = document.getElementById('drawingCanvas');
+        const ctx = canvas.getContext('2d');
+        const toolbar = document.getElementById('toolbar');
+        const whiteboardBg = document.getElementById('whiteboardBg');
+        const spotlight = document.getElementById('spotlightOverlay');
+        const stopwatch = document.getElementById('stopwatchWidget');
+        const settingsModal = document.getElementById('settingsModal');
+        const penPopupMenu = document.getElementById('penPopupMenu');
+        const shapePopupMenu = document.getElementById('shapePopupMenu');
+        const boardPopupMenu = document.getElementById('boardPopupMenu');
+        const spotlightPopupMenu = document.getElementById('spotlightPopupMenu');
+        const inlineTextInput = document.getElementById('inlineTextInput');
+        const regionPreview = document.getElementById('regionPreview');
+
+        function resizeCanvas() {
+            let dataURL = null;
+            if (canvas.width > 0 && canvas.height > 0) {
+                dataURL = canvas.toDataURL();
+            }
+            canvas.width = window.innerWidth;
+            canvas.height = 3000;
+            if (dataURL) {
+                let img = new Image();
+                img.src = dataURL;
+                img.onload = () => {
+                    ctx.drawImage(img, 0, 0);
+                };
+            }
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        let currentTool = 'pointer';
+        let isDrawing = false, startX = 0, startY = 0;
+        let currentColor = '#ef4444';
+        let currentSize = 4;
+        let currentEraserSize = 40;
+        let currentPenType = 'fine';
+        let currentShapeType = 'line';
+        let isBoardActive = false;
+        let spotlightRadius = 120;
+        let canvasSnapshot = null;
+
+        let isCreatingRegion = false;
+        let regionStartX = 0, regionStartY = 0;
+
+        let history = [];
+        let historyStep = -1;
+
+        function saveState() {
+            historyStep++;
+            if (historyStep < history.length) {
+                history.length = historyStep;
+            }
+            history.push(canvas.toDataURL());
+            ipcRenderer.send('set-unsaved', true);
+        }
+
+        saveState();
+
+        function hideAllPopups() {
+            settingsModal.style.display = 'none';
+            penPopupMenu.style.display = 'none';
+            shapePopupMenu.style.display = 'none';
+            boardPopupMenu.style.display = 'none';
+            spotlightPopupMenu.style.display = 'none';
+        }
+
+        function updateMouseEvents() {
+            const isModalOpen = settingsModal.style.display === 'block' || 
+                                penPopupMenu.style.display === 'block' || 
+                                shapePopupMenu.style.display === 'block' ||
+                                boardPopupMenu.style.display === 'block' ||
+                                spotlightPopupMenu.style.display === 'block';
+
+            if (isBoardActive || currentTool !== 'pointer' || isModalOpen || toolbar.matches(':hover') || settingsModal.matches(':hover') || penPopupMenu.matches(':hover') || shapePopupMenu.matches(':hover') || boardPopupMenu.matches(':hover') || spotlightPopupMenu.matches(':hover') || stopwatch.matches(':hover')) {
+                ipcRenderer.send('set-ignore-mouse-events', false);
+            } else {
+                ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+            }
+        }
+
+        const btnPointer = document.getElementById('btnPointer');
+        const btnPen = document.getElementById('btnPen');
+        const btnEraser = document.getElementById('btnEraser');
+        const btnExpand = document.getElementById('btnExpand');
+        const btnPalette = document.getElementById('btnPalette');
+        const btnShape = document.getElementById('btnShape');
+        const btnRegionBoard = document.getElementById('btnRegionBoard');
+        const btnText = document.getElementById('btnText');
+        const btnClearAll = document.getElementById('btnClearAll');
+        const btnUndo = document.getElementById('btnUndo');
+        const btnRedo = document.getElementById('btnRedo');
+        const btnSpotlight = document.getElementById('btnSpotlight');
+        const btnTimer = document.getElementById('btnTimer');
+        const btnBoard = document.getElementById('btnBoard');
+        const btnSave = document.getElementById('btnSave');
+        const btnLayout = document.getElementById('btnLayout');
+        const btnClose = document.getElementById('btnClose');
+
+        function setTool(tool) {
+            currentTool = tool;
+            hideAllPopups();
+            document.querySelectorAll('.tool-btn').forEach(b => {
+                if(b !== btnLayout && b !== btnClose && b !== btnBoard && b !== btnSpotlight && b !== btnTimer && b !== btnSave && b !== btnPalette && b !== btnClearAll && b !== btnUndo && b !== btnRedo && b !== btnExpand) b.classList.remove('active');
+            });
+            
+            if(tool === 'pointer') {
+                btnPointer.classList.add('active');
+            } else {
+                if(tool === 'pen') btnPen.classList.add('active');
+                if(tool === 'shape') btnShape.classList.add('active');
+                if(tool === 'regionBoard') btnRegionBoard.classList.add('active');
+                if(tool === 'text') btnText.classList.add('active');
+                if(tool === 'eraser') btnEraser.classList.add('active');
+            }
+            updateMouseEvents();
+        }
+
+        setTool('pointer');
+
+        btnPointer.onclick = () => setTool('pointer');
+        
+        // Kalem Butonu (Tür ve Kalınlık menüsünü açar)
+        btnPen.onclick = (e) => {
+            if (currentTool === 'pen' && penPopupMenu.style.display === 'block') {
+                penPopupMenu.style.display = 'none';
+            } else {
+                setTool('pen');
+                hideAllPopups();
+                penPopupMenu.style.left = Math.min(window.innerWidth - 180, btnPen.offsetLeft + toolbar.offsetLeft) + 'px';
+                penPopupMenu.style.top = (toolbar.offsetTop + 60) + 'px';
+                penPopupMenu.style.display = 'block';
+            }
+            updateMouseEvents();
+            e.stopPropagation();
+        };
+
+        btnShape.onclick = (e) => {
+            if (currentTool === 'shape' && shapePopupMenu.style.display === 'block') {
+                shapePopupMenu.style.display = 'none';
+            } else {
+                setTool('shape');
+                hideAllPopups();
+                shapePopupMenu.style.left = Math.min(window.innerWidth - 180, btnShape.offsetLeft + toolbar.offsetLeft) + 'px';
+                shapePopupMenu.style.top = (toolbar.offsetTop + 60) + 'px';
+                shapePopupMenu.style.display = 'block';
+            }
+            updateMouseEvents();
+            e.stopPropagation();
+        };
+
+        // Beyaz Tahta Butonu (Modları açar)
+        let isSpotlightActive = false;
+        btnBoard.onclick = (e) => {
+            if (boardPopupMenu.style.display === 'block') {
+                boardPopupMenu.style.display = 'none';
+            } else {
+                hideAllPopups();
+                boardPopupMenu.style.left = Math.min(window.innerWidth - 180, btnBoard.offsetLeft + toolbar.offsetLeft) + 'px';
+                boardPopupMenu.style.top = (toolbar.offsetTop + 60) + 'px';
+                boardPopupMenu.style.display = 'block';
+            }
+            updateMouseEvents();
+            e.stopPropagation();
+        };
+
+        document.getElementById('btnCloseBoard').onclick = (e) => {
+            isBoardActive = false;
+            document.documentElement.classList.remove('board-active', 'bg-lined', 'bg-grid', 'bg-dot');
+            document.body.classList.remove('board-active');
+            btnBoard.classList.remove('active');
+            boardPopupMenu.style.display = 'none';
+            updateMouseEvents();
+            e.stopPropagation();
+        };
+        
+        // Spot Işığı Butonu (Ayarlarını açar ve aktifleştirir)
+        btnSpotlight.onclick = (e) => {
+            isSpotlightActive = !isSpotlightActive;
+            document.body.classList.toggle('spotlight-active', isSpotlightActive);
+            btnSpotlight.classList.toggle('active', isSpotlightActive);
+
+            if (isSpotlightActive) {
+                hideAllPopups();
+                spotlightPopupMenu.style.left = Math.min(window.innerWidth - 180, btnSpotlight.offsetLeft + toolbar.offsetLeft) + 'px';
+                spotlightPopupMenu.style.top = (toolbar.offsetTop + 60) + 'px';
+                spotlightPopupMenu.style.display = 'block';
+            } else {
+                spotlightPopupMenu.style.display = 'none';
+            }
+            updateMouseEvents();
+            e.stopPropagation();
+        };
+
+        btnRegionBoard.onclick = () => setTool('regionBoard');
+        btnText.onclick = () => setTool('text');
+        btnEraser.onclick = () => setTool('eraser');
+
+        // Kalem türü seçimi
+        document.querySelectorAll('#penPopupMenu .popup-item').forEach(item => {
+            item.onclick = (e) => {
+                document.querySelectorAll('#penPopupMenu .popup-item').forEach(i => i.classList.remove('active'));
+                e.target.classList.add('active');
+                currentPenType = e.target.getAttribute('data-type');
+                e.stopPropagation();
+            };
+        });
+
+        // Kalem kalınlığı ayarı
+        document.getElementById('penSizeRange').oninput = (e) => {
+            currentSize = e.target.value;
+        };
+
+        document.querySelectorAll('#shapePopupMenu .popup-item').forEach(item => {
+            item.onclick = (e) => {
+                document.querySelectorAll('#shapePopupMenu .popup-item').forEach(i => i.classList.remove('active'));
+                e.target.classList.add('active');
+                currentShapeType = e.target.getAttribute('data-shape');
+                shapePopupMenu.style.display = 'none';
+                updateMouseEvents();
+                e.stopPropagation();
+            };
+        });
+
+        let isExpanded = false;
+        btnExpand.onclick = (e) => {
+            isExpanded = !isExpanded;
+            toolbar.classList.toggle('expanded', isExpanded);
+            e.stopPropagation();
+        };
+
+        btnPalette.onclick = (e) => {
+            hideAllPopups();
+            settingsModal.style.left = Math.min(window.innerWidth - 270, btnPalette.offsetLeft + toolbar.offsetLeft) + 'px';
+            settingsModal.style.top = (toolbar.offsetTop + 60) + 'px';
+            settingsModal.style.display = 'block';
+            updateMouseEvents();
+            e.stopPropagation();
+        };
+
+        document.querySelectorAll('.color-circle:not(.spot-color)').forEach(circle => {
+            circle.onclick = (e) => {
+                document.querySelectorAll('.color-circle:not(.spot-color)').forEach(c => c.classList.remove('selected'));
+                e.target.classList.add('selected');
+                currentColor = e.target.getAttribute('data-color');
+                e.stopPropagation();
+            };
+        });
+
+        document.querySelectorAll('.spot-color').forEach(circle => {
+            circle.onclick = (e) => {
+                document.querySelectorAll('.spot-color').forEach(c => c.classList.remove('selected'));
+                e.target.classList.add('selected');
+                spotlight.style.backgroundColor = e.target.getAttribute('data-color');
+                e.stopPropagation();
+            };
+        });
+
+        const eyedropperBtn = document.getElementById('eyedropperBtn');
+        if (window.EyeDropper) {
+            eyedropperBtn.onclick = async () => {
+                try {
+                    settingsModal.style.display = 'none';
+                    updateMouseEvents();
+                    const eyeDropper = new EyeDropper();
+                    const result = await eyeDropper.open();
+                    if (result && result.sRGBHex) {
+                        currentColor = result.sRGBHex;
+                        document.querySelectorAll('.color-circle:not(.spot-color)').forEach(c => {
+                            if (c.getAttribute('data-color').toLowerCase() === currentColor.toLowerCase()) {
+                                document.querySelectorAll('.color-circle:not(.spot-color)').forEach(el => el.classList.remove('selected'));
+                                c.classList.add('selected');
+                            }
+                        });
+                    }
+                } catch (e) {}
+            };
+        } else {
+            eyedropperBtn.style.display = 'none';
+        }
+
+        // Beyaz Tahta & Defter Modu Seçenekleri
+        document.querySelectorAll('.board-mode-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                document.querySelectorAll('.board-mode-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                const pattern = e.target.getAttribute('data-pattern');
+                
+                isBoardActive = true;
+                document.documentElement.classList.add('board-active');
+                document.body.classList.add('board-active');
+                btnBoard.classList.add('active');
+
+                document.documentElement.classList.remove('bg-lined', 'bg-grid', 'bg-dot');
+                if (pattern !== 'plain') {
+                    document.documentElement.classList.add(pattern);
+                }
+                boardPopupMenu.style.display = 'none';
+                updateMouseEvents();
+                e.stopPropagation();
+            };
+        });
+
+        document.getElementById('eraserSizeRange').oninput = (e) => { currentEraserSize = e.target.value; };
+        document.getElementById('spotSizeRange').oninput = (e) => { spotlightRadius = e.target.value; };
+
+        btnClearAll.onclick = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            saveState();
+        };
+
+        btnUndo.onclick = () => {
+            if (historyStep > 0) {
+                historyStep--;
+                let img = new Image();
+                img.src = history[historyStep];
+                img.onload = () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0);
+                };
+            }
+        };
+
+        btnRedo.onclick = () => {
+            if (historyStep < history.length - 1) {
+                historyStep++;
+                let img = new Image();
+                img.src = history[historyStep];
+                img.onload = () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0);
+                };
+            }
+        };
+
+        btnSave.onclick = () => {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = window.innerHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            // 1. Eğer Beyaz Tahta veya Defter Modu aktifse arka plan rengini/desenini boya
+            if (isBoardActive) {
+                // Tahta arka plan rengi
+                tempCtx.fillStyle = '#ffffff';
+                tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+                // Eğer defter modlarından biri aktifse desenleri çiz
+                if (document.documentElement.classList.contains('bg-lined')) {
+                    tempCtx.strokeStyle = '#e2e8f0';
+                    tempCtx.lineWidth = 1;
+                    for (let y = 30; y < tempCanvas.height; y += 30) {
+                        tempCtx.beginPath();
+                        tempCtx.moveTo(0, y);
+                        tempCtx.lineTo(tempCanvas.width, y);
+                        tempCtx.stroke();
+                    }
+                } else if (document.documentElement.classList.contains('bg-grid')) {
+                    tempCtx.strokeStyle = '#f1f5f9';
+                    tempCtx.lineWidth = 1;
+                    for (let x = 0; x < tempCanvas.width; x += 25) {
+                        tempCtx.beginPath(); tempCtx.moveTo(x, 0); tempCtx.lineTo(x, tempCanvas.height); tempCtx.stroke();
+                    }
+                    for (let y = 0; y < tempCanvas.height; y += 25) {
+                        tempCtx.beginPath(); tempCtx.moveTo(0, y); tempCtx.lineTo(tempCanvas.width, y); tempCtx.stroke();
+                    }
+                } else if (document.documentElement.classList.contains('bg-dot')) {
+                    tempCtx.fillStyle = '#cbd5e1';
+                    for (let x = 0; x < tempCanvas.width; x += 25) {
+                        for (let y = 0; y < tempCanvas.height; y += 25) {
+                            tempCtx.fillRect(x, y, 1.5, 1.5);
+                        }
+                    }
+                }
+            }
+
+            // 2. Üzerine çizilen canvas katmanını ekle
+            tempCtx.drawImage(canvas, 0, -window.scrollY);
+
+            // 3. Dosyayı indir
+            const link = document.createElement('a');
+            link.download = `ZahirKalem_DersNotu_${Date.now()}.png`;
+            link.href = tempCanvas.toDataURL('image/png');
+            link.click();
+            ipcRenderer.send('set-unsaved', false);
+        };
+
+        window.addEventListener('mousemove', (e) => {
+            if(isSpotlightActive) {
+                spotlight.style.clipPath = `circle(${spotlightRadius}px at ${e.clientX}px ${e.clientY}px)`;
+            }
+        });
+
+        let isTimerActive = false, timerInterval = null, seconds = 0;
+        btnTimer.onclick = () => {
+            isTimerActive = !isTimerActive;
+            if(isTimerActive) {
+                stopwatch.style.display = 'block';
+                btnTimer.classList.add('active');
+                if(!timerInterval) {
+                    timerInterval = setInterval(() => {
+                        seconds++;
+                        let m = Math.floor(seconds / 60).toString().padStart(2, '0');
+                        let s = (seconds % 60).toString().padStart(2, '0');
+                        stopwatch.innerText = `${m}:${s}`;
+                    }, 1000);
+                }
+            } else {
+                stopwatch.style.display = 'none';
+                btnTimer.classList.remove('active');
+            }
+        };
+
+        btnLayout.onclick = () => toolbar.classList.toggle('vertical');
+        btnClose.onclick = () => window.close();
+
+        let textClickX = 0, textClickY = 0;
+        
+        canvas.addEventListener('mousedown', (e) => {
+            if(currentTool === 'pointer' && !isBoardActive) return;
+            hideAllPopups();
+            updateMouseEvents();
+
+            if(currentTool === 'regionBoard') {
+                isCreatingRegion = true;
+                regionStartX = e.clientX;
+                regionStartY = e.clientY;
+                regionPreview.style.left = regionStartX + 'px';
+                regionPreview.style.top = regionStartY + 'px';
+                regionPreview.style.width = '0px';
+                regionPreview.style.height = '0px';
+                regionPreview.style.display = 'block';
+                return;
+            }
+
+            if(currentTool === 'text') {
+                textClickX = e.offsetX;
+                textClickY = e.offsetY;
+                inlineTextInput.style.left = e.clientX + 'px';
+                inlineTextInput.style.top = e.clientY + 'px';
+                inlineTextInput.style.display = 'block';
+                inlineTextInput.value = '';
+                inlineTextInput.focus();
+                return;
+            }
+
+            isDrawing = true; 
+            startX = e.offsetX; 
+            startY = e.offsetY;
+
+            if (currentTool === 'shape') {
+                canvasSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            }
+        });
+
+        inlineTextInput.onkeydown = (e) => {
+            if(e.key === 'Enter') {
+                if(inlineTextInput.value.trim() !== '') {
+                    ctx.font = `${currentSize * 5 + 12}px sans-serif`;
+                    ctx.fillStyle = currentColor;
+                    ctx.fillText(inlineTextInput.value, textClickX, textClickY);
+                    saveState();
+                }
+                inlineTextInput.style.display = 'none';
+            }
+        };
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isCreatingRegion) {
+                let currentX = e.clientX;
+                let currentY = e.clientY;
+                let left = Math.min(regionStartX, currentX);
+                let top = Math.min(regionStartY, currentY);
+                let width = Math.abs(currentX - regionStartX);
+                let height = Math.abs(currentY - regionStartY);
+                regionPreview.style.left = left + 'px';
+                regionPreview.style.top = top + 'px';
+                regionPreview.style.width = width + 'px';
+                regionPreview.style.height = height + 'px';
+                return;
+            }
+
+            if (!isDrawing || (currentTool === 'pointer' && !isBoardActive)) return;
+
+            if(currentTool === 'pen' || currentTool === 'eraser') {
+                ctx.beginPath(); 
+                ctx.moveTo(startX, startY); 
+                ctx.lineTo(e.offsetX, e.offsetY);
+
+                if(currentTool === 'pen') {
+                    ctx.strokeStyle = currentColor; 
+                    if(currentPenType === 'fine') {
+                        ctx.lineWidth = currentSize;
+                        ctx.lineCap = 'round';
+                        ctx.globalAlpha = 1.0;
+                    } else if(currentPenType === 'medium') {
+                        ctx.lineWidth = Number(currentSize) + 4;
+                        ctx.lineCap = 'square';
+                        ctx.globalAlpha = 1.0;
+                    } else if(currentPenType === 'brush') {
+                        ctx.lineWidth = Number(currentSize) * 1.5;
+                        ctx.lineCap = 'round';
+                        ctx.globalAlpha = 0.8;
+                    } else if(currentPenType === 'highlighter') {
+                        ctx.lineWidth = currentSize * 4;
+                        ctx.lineCap = 'butt';
+                        ctx.globalAlpha = 0.3;
+                    }
+                } else if(currentTool === 'eraser') {
+                    ctx.strokeStyle = 'rgba(0,0,0,1)'; 
+                    ctx.lineWidth = currentEraserSize; 
+                    ctx.globalCompositeOperation = 'destination-out';
+                    ctx.globalAlpha = 1.0;
+                }
+
+                ctx.stroke(); 
+                ctx.globalCompositeOperation = 'source-over';
+                startX = e.offsetX; 
+                startY = e.offsetY;
+            } else if (currentTool === 'shape' && canvasSnapshot) {
+                ctx.putImageData(canvasSnapshot, 0, 0);
+                ctx.beginPath();
+                ctx.strokeStyle = currentColor;
+                ctx.lineWidth = currentSize;
+                ctx.globalAlpha = 1.0;
+
+                if (currentShapeType === 'line') {
+                    ctx.moveTo(startX, startY);
+                    ctx.lineTo(e.offsetX, e.offsetY);
+                } else if (currentShapeType === 'rect') {
+                    ctx.strokeRect(startX, startY, e.offsetX - startX, e.offsetY - startY);
+                } else if (currentShapeType === 'triangle') {
+                    ctx.moveTo(startX + (e.offsetX - startX) / 2, startY);
+                    ctx.lineTo(startX, e.offsetY);
+                    ctx.lineTo(e.offsetX, e.offsetY);
+                    ctx.closePath();
+                }
+                ctx.stroke();
+            }
+        });
+
+        function createCutoutBoard(x, y, w, h) {
+            const existing = document.getElementById('activeCutoutGroup');
+            if (existing) existing.remove();
+
+            const group = document.createElement('div');
+            group.id = 'activeCutoutGroup';
+
+            const topP = document.createElement('div');
+            topP.className = 'cutout-panel';
+            topP.style.top = '0px';
+            topP.style.left = '0px';
+            topP.style.width = '100vw';
+            topP.style.height = y + 'px';
+
+            const bottomP = document.createElement('div');
+            bottomP.className = 'cutout-panel';
+            bottomP.style.top = (y + h) + 'px';
+            bottomP.style.left = '0px';
+            bottomP.style.width = '100vw';
+            bottomP.style.height = (window.innerHeight - (y + h)) + 'px';
+
+            const leftP = document.createElement('div');
+            leftP.className = 'cutout-panel';
+            leftP.style.top = y + 'px';
+            leftP.style.left = '0px';
+            leftP.style.width = x + 'px';
+            leftP.style.height = h + 'px';
+
+            const rightP = document.createElement('div');
+            rightP.className = 'cutout-panel';
+            rightP.style.top = y + 'px';
+            rightP.style.left = (x + w) + 'px';
+            rightP.style.width = (window.innerWidth - (x + w)) + 'px';
+            rightP.style.height = h + 'px';
+
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'cutout-close';
+            closeBtn.innerHTML = '×';
+            closeBtn.style.left = (x + w - 30) + 'px';
+            closeBtn.style.top = (y + 5) + 'px';
+            closeBtn.onclick = () => group.remove();
+
+            const borderBox = document.createElement('div');
+            borderBox.style.position = 'fixed';
+            borderBox.style.left = x + 'px';
+            borderBox.style.top = y + 'px';
+            borderBox.style.width = w + 'px';
+            borderBox.style.height = h + 'px';
+            borderBox.style.border = '2px dashed #3b82f6';
+            borderBox.style.zIndex = '13';
+            borderBox.style.pointerEvents = 'none';
+
+            group.appendChild(topP);
+            group.appendChild(bottomP);
+            group.appendChild(leftP);
+            group.appendChild(rightP);
+            group.appendChild(borderBox);
+            group.appendChild(closeBtn);
+
+            document.body.appendChild(group);
+        }
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (isCreatingRegion) {
+                isCreatingRegion = false;
+                regionPreview.style.display = 'none';
+                let left = parseInt(regionPreview.style.left);
+                let top = parseInt(regionPreview.style.top);
+                let width = parseInt(regionPreview.style.width);
+                let height = parseInt(regionPreview.style.height);
+
+                if (width > 40 && height > 40) {
+                    createCutoutBoard(left, top, width, height);
+                }
+                return;
+            }
+
+            if (!isDrawing || (currentTool === 'pointer' && !isBoardActive)) return;
+            
+            if(currentTool === 'shape') {
+                if (canvasSnapshot) {
+                    ctx.putImageData(canvasSnapshot, 0, 0);
+                }
+                ctx.beginPath(); 
+                ctx.strokeStyle = currentColor; 
+                ctx.lineWidth = currentSize;
+                ctx.globalAlpha = 1.0;
+                
+                if(currentShapeType === 'line') {
+                    ctx.moveTo(startX, startY);
+                    ctx.lineTo(e.offsetX, e.offsetY);
+                } else if(currentShapeType === 'rect') {
+                    ctx.strokeRect(startX, startY, e.offsetX - startX, e.offsetY - startY);
+                } else if(currentShapeType === 'triangle') {
+                    ctx.moveTo(startX + (e.offsetX - startX) / 2, startY);
+                    ctx.lineTo(startX, e.offsetY);
+                    ctx.lineTo(e.offsetX, e.offsetY);
+                    ctx.closePath();
+                }
+                ctx.stroke();
+                canvasSnapshot = null;
+            }
+            
+            isDrawing = false;
+            saveState();
+        });
+
+        [toolbar, settingsModal, penPopupMenu, shapePopupMenu, boardPopupMenu, spotlightPopupMenu, stopwatch].forEach(elm => {
+            if(elm) {
+                elm.addEventListener('mouseenter', updateMouseEvents);
+                elm.addEventListener('mouseleave', updateMouseEvents);
+            }
+        });
+
+        function makeDraggable(elm) {
+            elm.onmousedown = (e) => {
+                if(e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('button')) return;
+                e.preventDefault();
+                
+                const rect = elm.getBoundingClientRect();
+                elm.style.right = 'auto';
+                elm.style.bottom = 'auto';
+                elm.style.left = rect.left + 'px';
+                elm.style.top = rect.top + 'px';
+
+                let prevX = e.clientX;
+                let prevY = e.clientY;
+
+                document.onmouseup = () => { 
+                    document.onmouseup = null; 
+                    document.onmousemove = null; 
+                    updateMouseEvents(); 
+                };
+                
+                document.onmousemove = (e) => {
+                    e.preventDefault();
+                    const deltaX = e.clientX - prevX;
+                    const deltaY = e.clientY - prevY;
+                    prevX = e.clientX;
+                    prevY = e.clientY;
+
+                    const currentLeft = parseFloat(elm.style.left) || rect.left;
+                    const currentTop = parseFloat(elm.style.top) || rect.top;
+
+                    elm.style.left = (currentLeft + deltaX) + "px";
+                    elm.style.top = (currentTop + deltaY) + "px";
+                };
+            };
+        }
+        makeDraggable(toolbar);
+        makeDraggable(stopwatch);
+    </script>
+</body>
+</html>

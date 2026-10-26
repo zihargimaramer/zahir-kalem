@@ -1,0 +1,30 @@
+name: Build Linux .deb
+
+on:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kodları Al
+        uses: actions/checkout@v4
+
+      - name: Node.js Kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Bağımlılıkları Yükle
+        run: npm install
+
+      - name: .deb Paketini Oluştur
+        run: npx electron-builder --linux deb
+
+      - name: Paketi Kaydet (Artifacts)
+        uses: upload-artifact@v4
+        with:
+          name: zahirkalem-deb
+          path: dist/*.deb
